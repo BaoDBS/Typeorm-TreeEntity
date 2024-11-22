@@ -1,4 +1,4 @@
-import { Body, HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import { Body, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { Building } from './building.entity';
 import { BuildingRepository } from './building.repository';
@@ -12,6 +12,7 @@ import {
 
 @Injectable()
 export class BuildingService extends BaseService {
+  private logger = new Logger(BuildingService.name);
   constructor(private buildingRepo: BuildingRepository) {
     super();
   }
@@ -24,27 +25,19 @@ export class BuildingService extends BaseService {
       parentNameBuilding,
       parentNumberLocation,
     } = dto;
-    console.log( {
-      buildingName,
-      locationName,
-      locationNumber,
-      area,
-      parentNameBuilding,
-      parentNumberLocation,
-    },!locationName)
     const data = new Building();
     try {
       if (buildingName) {
         data.buildingName = buildingName;
       } else {
-        if (!locationName || !locationNumber || !area ) {
+        if (!locationName || !locationNumber || !area) {
           this.formatError(
             HttpStatus.BAD_REQUEST,
             'BAD_REQUEST',
             'locationName, locationNumber, area should not be empty',
           );
         }
-        if (!parentNameBuilding || !parentNumberLocation ) {
+        if (!parentNameBuilding || !parentNumberLocation) {
           this.formatError(
             HttpStatus.BAD_REQUEST,
             'BAD_REQUEST',
@@ -78,6 +71,7 @@ export class BuildingService extends BaseService {
         ),
       );
     } catch (error) {
+      this.logger.error(JSON.stringify(error));
       this.formatError(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'INTERNAL_SERVER_ERROR',
@@ -91,26 +85,26 @@ export class BuildingService extends BaseService {
       const buildings = await this.buildingRepo.getAll();
       if (buildings.length > 0) {
         const result = buildings.map((building) => {
-            const { id, buildingName, children } = building;
-            const locations  =  plainToInstance(
+          const { id, buildingName, children } = building;
+          const locations = plainToInstance(
             GetDetailWithChildBuildingRO,
             children,
             {
               excludeExtraneousValues: true,
             },
           );
-            return {
-              id,
-              buildingName,
-              locations,
-            };
+          return {
+            id,
+            buildingName,
+            locations,
+          };
         });
-        return this.formatData(
-          HttpStatus.OK,
-          result
-        );
+        return this.formatData(HttpStatus.OK, result);
+      } else {
+        return this.formatData(HttpStatus.OK, []);
       }
     } catch (error) {
+      this.logger.error(JSON.stringify(error));
       this.formatError(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'INTERNAL_SERVER_ERROR',
@@ -131,6 +125,7 @@ export class BuildingService extends BaseService {
         }),
       );
     } catch (error) {
+      this.logger.error(JSON.stringify(error));
       this.formatError(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'INTERNAL_SERVER_ERROR',
@@ -150,6 +145,7 @@ export class BuildingService extends BaseService {
         );
       }
     } catch (error) {
+      this.logger.error(JSON.stringify(error));
       this.formatError(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'INTERNAL_SERVER_ERROR',
@@ -173,6 +169,7 @@ export class BuildingService extends BaseService {
         ),
       );
     } catch (error) {
+      this.logger.error(JSON.stringify(error));
       this.formatError(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'INTERNAL_SERVER_ERROR',
@@ -196,6 +193,7 @@ export class BuildingService extends BaseService {
         ),
       );
     } catch (error) {
+      this.logger.error(JSON.stringify(error));
       this.formatError(
         HttpStatus.INTERNAL_SERVER_ERROR,
         'INTERNAL_SERVER_ERROR',
