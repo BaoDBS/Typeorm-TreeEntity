@@ -1,10 +1,17 @@
-import { Body, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import {
+  Body,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { Building } from './building.entity';
 import { BuildingRepository } from './building.repository';
 import { CreateBuildingDTO, UpdateBuildingDTO } from './dto/building.dto';
 import { BaseService } from '../common/base.service';
 import {
+  GetAllBuildingRO,
   GetDetailBuildingRO,
   GetDetailWithChildBuildingRO,
   ResultRO,
@@ -28,37 +35,68 @@ export class BuildingService extends BaseService {
     const data = new Building();
     try {
       if (buildingName) {
+        await this.isBuildingNameExist(buildingName);
         data.buildingName = buildingName;
       } else {
         if (!locationName || !locationNumber || !area) {
-          this.formatError(
+          throw new HttpException(
+            {
+              code: 'BAD_REQUEST',
+              message: 'locationName, locationNumber, area should not be empty',
+            },
             HttpStatus.BAD_REQUEST,
-            'BAD_REQUEST',
-            'locationName, locationNumber, area should not be empty',
           );
         }
-        if (!parentNameBuilding || !parentNumberLocation) {
-          this.formatError(
+        if (!parentNameBuilding && !parentNumberLocation) {
+          throw new HttpException(
+            {
+              code: 'BAD_REQUEST',
+              message:
+                'parentNameBuilding, parentNumberLocation should not be empty',
+            },
             HttpStatus.BAD_REQUEST,
-            'BAD_REQUEST',
-            'parentNameBuilding, parentNumberLocation should not be empty',
           );
         }
         data.locationName = locationName;
         data.locationNumber = locationNumber;
         data.area = area;
         if (parentNameBuilding) {
-          data.parent = await this.buildingRepo.findOne({
-            where: { buildingName: parentNameBuilding },
-          });
+          const countByName =
+            await this.buildingRepo.isBuildingNameExist(parentNameBuilding);
+          if (countByName) {
+            data.parent = await this.buildingRepo.findOne({
+              where: { buildingName: parentNameBuilding },
+            });
+          } else {
+            throw new HttpException(
+              {
+                code: 'BUILDING_NAME_DOES_NOT_EXIST',
+                message: 'buildingName does not exist',
+              },
+              HttpStatus.BAD_REQUEST,
+            );
+          }
         }
 
         if (parentNumberLocation) {
-          data.parent = await this.buildingRepo.findOne({
-            where: { locationNumber: parentNumberLocation },
-          });
+          const countByNumber =
+            await this.buildingRepo.isLocationNumberExist(parentNumberLocation);
+          if (countByNumber) {
+            data.parent = await this.buildingRepo.findOne({
+              where: { locationNumber: parentNumberLocation },
+            });
+          } else {
+            throw new HttpException(
+              {
+                code: 'LOCATION_NUMBER_DOES_NOT_EXIST',
+                message: 'locationNumber does not exist',
+              },
+              HttpStatus.BAD_REQUEST,
+            );
+          }
         }
       }
+
       await this.buildingRepo.createBuilding(data);
       return this.formatData(
         HttpStatus.CREATED,
@@ -72,11 +110,19 @@ export class BuildingService extends BaseService {
       );
     } catch (error) {
       this.logger.error(JSON.stringify(error));
-      this.formatError(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        'INTERNAL_SERVER_ERROR',
-        'INTERNAL_SERVER_ERROR',
-      );
+      console.log(error);
+      if (error.status === HttpStatus.INTERNAL_SERVER_ERROR) {
+        this.formatError(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'INTERNAL_SERVER_ERROR',
+          'INTERNAL_SERVER_ERROR',
+        );
+      } else {
+        const response = error.getResponse();
+        const status = error.getStatus();
+        console.log(status, error.status);
+        this.formatError(status, response.code, response.message);
+      }
     }
   }
 
@@ -115,48 +161,64 @@ export class BuildingService extends BaseService {
 
   async getById(id: number) {
     try {
-      await this.isBuildingExist(id);
+      await this.isExist(id);
       const building = await this.buildingRepo.getById(id);
-
-      return this.formatData(
-        HttpStatus.OK,
-        plainToInstance(GetDetailBuildingRO, building, {
-          excludeExtraneousValues: true,
-        }),
-      );
-    } catch (error) {
-      this.logger.error(JSON.stringify(error));
-      this.formatError(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        'INTERNAL_SERVER_ERROR',
-        'INTERNAL_SERVER_ERROR',
-      );
-    }
-  }
-
-  async isBuildingExist(id: number) {
-    try {
-      const countById = await this.buildingRepo.isBuildingExist(id);
-      if (!countById) {
-        this.formatError(
-          HttpStatus.BAD_REQUEST,
-          'BUILDING_DOES_NOT_EXIST',
-          'BUILDING_DOES_NOT_EXIST',
+      if (building.buildingName) {
+        return this.formatData(
+          HttpStatus.OK,
+          plainToInstance(GetAllBuildingRO, building, {
+            excludeExtraneousValues: true,
+          }),
+        );
+      } else {
+        return this.formatData(
+          HttpStatus.OK,
+          plainToInstance(GetDetailBuildingRO, building, {
+            excludeExtraneousValues: true,
+          }),
         );
       }
     } catch (error) {
       this.logger.error(JSON.stringify(error));
-      this.formatError(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        'INTERNAL_SERVER_ERROR',
-        'INTERNAL_SERVER_ERROR',
+      if (error.status === HttpStatus.INTERNAL_SERVER_ERROR) {
+        this.formatError(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'INTERNAL_SERVER_ERROR',
+          'INTERNAL_SERVER_ERROR',
+        );
+      } else {
+        const response = error.getResponse();
+        const status = error.getStatus();
+        console.log(status, error.status);
+        this.formatError(status, response.code, response.message);
+      }
+    }
+  }
+
+  async isExist(id: number) {
+    const countById = await this.buildingRepo.isBuildingExist(id);
+    if (!countById) {
+      throw new HttpException(
+        { code: 'ID_DOES_NOT_EXIST', message: 'id does not exist' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  async isBuildingNameExist(buildingName: string) {
+    const countByName =
+      await this.buildingRepo.isBuildingNameExist(buildingName);
+    if (countByName) {
+      throw new HttpException(
+        { code: 'BUILDING_NAME_EXIST', message: 'buildingName exist' },
+        HttpStatus.BAD_REQUEST,
       );
     }
   }
 
   async updateById(id: number, dto: UpdateBuildingDTO) {
     try {
-      await this.isBuildingExist(id);
+      await this.isExist(id);
       await this.buildingRepo.updateById(id, dto);
       return this.formatData(
         HttpStatus.OK,
@@ -170,17 +232,24 @@ export class BuildingService extends BaseService {
       );
     } catch (error) {
       this.logger.error(JSON.stringify(error));
-      this.formatError(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        'INTERNAL_SERVER_ERROR',
-        'INTERNAL_SERVER_ERROR',
-      );
+      if (error.status === HttpStatus.INTERNAL_SERVER_ERROR) {
+        this.formatError(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'INTERNAL_SERVER_ERROR',
+          'INTERNAL_SERVER_ERROR',
+        );
+      } else {
+        const response = error.getResponse();
+        const status = error.getStatus();
+        console.log(status, error.status);
+        this.formatError(status, response.code, response.message);
+      }
     }
   }
 
   async deleteById(id: number) {
     try {
-      await this.isBuildingExist(id);
+      await this.isExist(id);
       await this.buildingRepo.deleteById(id);
       return this.formatData(
         HttpStatus.OK,
@@ -194,11 +263,18 @@ export class BuildingService extends BaseService {
       );
     } catch (error) {
       this.logger.error(JSON.stringify(error));
-      this.formatError(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        'INTERNAL_SERVER_ERROR',
-        'INTERNAL_SERVER_ERROR',
-      );
+      if (error.status === HttpStatus.INTERNAL_SERVER_ERROR) {
+        this.formatError(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'INTERNAL_SERVER_ERROR',
+          'INTERNAL_SERVER_ERROR',
+        );
+      } else {
+        const response = error.getResponse();
+        const status = error.getStatus();
+        console.log(status, error.status);
+        this.formatError(status, response.code, response.message);
+      }
     }
   }
 }

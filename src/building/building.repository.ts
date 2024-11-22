@@ -27,6 +27,14 @@ export class BuildingRepository extends Repository<Building> {
     return await this.countBy({ id });
   }
 
+  async isBuildingNameExist(buildingName: string) {
+    return await this.countBy({ buildingName });
+  }
+
+  async isLocationNumberExist(locationNumber: string) {
+    return await this.countBy({ locationNumber });
+  }
+
   async updateById(id: number, dto: UpdateBuildingDTO) {
     return await this.update({ id }, dto);
   }
